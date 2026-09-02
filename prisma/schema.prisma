@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  USER
+  SUPERADMIN
+}
+
+enum ProjectRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum DocumentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id               String              @id @default(uuid())
+  email            String              @unique
+  passwordHash     String
+  displayName      String?
+  globalRole       GlobalRole          @default(USER)
+  memberships      ProjectMembership[]
+  sessions         Session[]
+  createdDocuments Document[]          @relation("CreatedBy")
+  updatedDocuments Document[]          @relation("UpdatedBy")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  disabledAt       DateTime?
+}
+
+model Project {
+  id          String              @id @default(uuid())
+  slug        String              @unique
+  name        String
+  description String?
+  memberships ProjectMembership[]
+  documents   Document[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  isReadOnly  Boolean             @default(false)
+  blockedAt   DateTime?
+  archivedAt  DateTime?
+}
+
+model ProjectMembership {
+  projectId String
+  userId    String
+  role      ProjectRole
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@id([projectId, userId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Document {
+  id           String         @id @default(uuid())
+  projectId    String
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slug         String
+  title        String
+  description  String?
+  section      String
+  sectionOrder Int            @default(99)
+  sortOrder    Int            @default(999)
+  tags         String[]
+  markdown     String
+  searchText   String
+  status       DocumentStatus @default(DRAFT)
+  createdById  String
+  updatedById  String
+  createdBy    User           @relation("CreatedBy", fields: [createdById], references: [id])
+  updatedBy    User           @relation("UpdatedBy", fields: [updatedById], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([projectId, slug])
+  @@index([projectId, status])
+  @@index([projectId, section])
+}

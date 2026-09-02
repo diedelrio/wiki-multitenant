@@ -3,7 +3,8 @@ import { useOutletContext, useParams } from 'react-router-dom'
 import Breadcrumbs from '../components/Breadcrumbs'
 import TableOfContents from '../components/TableOfContents'
 import MermaidRenderer from '../components/MermaidRenderer'
-import { loadDocument } from '../lib/content'
+import { parseDocument } from '../lib/content'
+import { getDocument } from '../lib/api'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 
@@ -13,7 +14,7 @@ function renderNonMermaid(markdown) {
 
 export default function DocumentPage() {
   const { slug = '' } = useParams()
-  const { docs, theme } = useOutletContext()
+  const { docs, theme, project } = useOutletContext()
   const decodedSlug = decodeURIComponent(slug)
   const doc = useMemo(() => docs.find(item => item.slug === decodedSlug), [docs, decodedSlug])
   const [content, setContent] = useState(null)
@@ -23,8 +24,8 @@ export default function DocumentPage() {
     if (!doc) return
     setContent(null)
     setError('')
-    loadDocument(doc).then(setContent).catch(err => setError(err.message))
-  }, [doc])
+    getDocument(project.id, doc.slug).then(data => setContent(parseDocument(data))).catch(err => setError(err.message))
+  }, [doc, project.id])
 
   if (!doc) return <main className="page"><div className="empty-state"><h1>Documento no encontrado</h1><p>El documento solicitado no existe en el índice actual.</p></div></main>
   if (error) return <main className="page"><div className="empty-state"><h1>No se pudo abrir</h1><p>{error}</p></div></main>

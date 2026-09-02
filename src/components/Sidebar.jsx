@@ -1,15 +1,15 @@
-import { BookOpen, ChevronRight, FileText, Home, Search, X } from 'lucide-react'
+import { BookOpen, ChevronRight, FileText, Home, Search, Settings, Users, X } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { groupBySection } from '../lib/content'
 
-export default function Sidebar({ docs, open, setOpen, query, setQuery }) {
+export default function Sidebar({ docs, open, setOpen, query, setQuery, projectId, canEdit }) {
   const grouped = groupBySection(docs)
   const navigate = useNavigate()
 
   function submit(event) {
     event.preventDefault()
     const value = query.trim()
-    navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/')
+    navigate(value ? `/projects/${projectId}/search?q=${encodeURIComponent(value)}` : `/projects/${projectId}`)
     setOpen(false)
   }
 
@@ -29,15 +29,17 @@ export default function Sidebar({ docs, open, setOpen, query, setQuery }) {
         </form>
 
         <nav className="nav-scroll">
-          <NavLink to="/" end onClick={() => setOpen(false)} className={({ isActive }) => `nav-item home-link ${isActive ? 'active' : ''}`}>
+          <NavLink to={`/projects/${projectId}`} end onClick={() => setOpen(false)} className={({ isActive }) => `nav-item home-link ${isActive ? 'active' : ''}`}>
             <Home size={16} /><span>Inicio</span>
           </NavLink>
+          {canEdit && <NavLink to={`/projects/${projectId}/manage`} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Settings size={16}/><span>Administrar documentos</span></NavLink>}
+          <NavLink to={`/projects/${projectId}/members`} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Users size={16}/><span>Miembros</span></NavLink>
 
           {Object.entries(grouped).map(([section, items]) => (
             <section className="nav-section" key={section}>
               <div className="section-title">{section}</div>
               {items.map(doc => (
-                <NavLink key={doc.slug} to={`/docs/${encodeURIComponent(doc.slug)}`} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                <NavLink key={doc.slug} to={`/projects/${projectId}/docs/${encodeURIComponent(doc.slug)}`} onClick={() => setOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                   <FileText size={15} /><span>{doc.title}</span><ChevronRight className="nav-chevron" size={14} />
                 </NavLink>
               ))}

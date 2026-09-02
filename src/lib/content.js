@@ -29,16 +29,8 @@ renderer.code = ({ text, lang }) => {
 
 marked.use({ renderer, gfm: true, breaks: false })
 
-export async function loadIndex() {
-  const response = await fetch('/content-index.json', { cache: 'no-store' })
-  if (!response.ok) throw new Error('No se pudo cargar el índice de contenidos')
-  return response.json()
-}
-
-export async function loadDocument(doc) {
-  const response = await fetch(doc.path, { cache: 'no-store' })
-  if (!response.ok) throw new Error(`No se pudo cargar “${doc.title}”`)
-  const markdown = await response.text()
+export function parseDocument(document) {
+  const markdown = document.markdown
   const html = DOMPurify.sanitize(marked.parse(markdown), {
     ADD_ATTR: ['target'],
   })
