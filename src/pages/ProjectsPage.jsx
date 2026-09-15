@@ -1,9 +1,17 @@
-import { useState } from 'react'
-import { Navigate, Link } from 'react-router-dom'
-import { createProject } from '../lib/api'
-export default function ProjectsPage({ projects, user, refreshSession }) {
-  const [form, setForm] = useState({ name: '', slug: '', description: '' }); const [message, setMessage] = useState('')
-  if (projects.length === 1 && user.globalRole !== 'SUPERADMIN') return <Navigate to={`/projects/${projects[0].id}`} replace />
-  async function submit(event) { event.preventDefault(); try { await createProject(form); await refreshSession(); setForm({ name: '', slug: '', description: '' }); setMessage('Proyecto creado.') } catch (error) { setMessage(error.message) } }
-  return <main className="page admin-page"><div className="section-heading admin-heading"><div><h1>Selecciona un proyecto</h1><p>Solo aparecen los proyectos autorizados.</p></div>{user.globalRole === 'SUPERADMIN' && <Link className="primary-link" to="/admin">Administración global</Link>}</div><div className="section-grid">{projects.map(project => <Link className="section-card" key={project.id} to={`/projects/${project.id}`}><h3>{project.name}</h3><p>{project.description}</p><small>{project.role || 'SUPERADMIN'}{project.isReadOnly ? ' · SOLO LECTURA' : ''}</small></Link>)}</div>{user.globalRole === 'SUPERADMIN' && <form className="panel inline-form project-form" onSubmit={submit}><h2>Nuevo proyecto</h2><input placeholder="Nombre" value={form.name} onChange={e => setForm({ ...form, name: e.target.value, slug: e.target.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-') })} required /><input placeholder="slug" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} required /><input placeholder="Descripción" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /><button className="primary-link">Crear</button>{message && <span>{message}</span>}</form>}</main>
+import MyAccessRequests from '../components/MyAccessRequests'
+import ProjectSubscriptions from '../components/ProjectSubscriptions'
+import DefaultProjectPreference from '../components/DefaultProjectPreference'
+import { Link } from 'react-router-dom'
+import CreateProjectForm from '../components/CreateProjectForm'
+
+export default function ProjectsPage({ projects, user, refreshSession, accessRequests = [] }) {
+  return <main className="page admin-page">
+    <div className="section-heading admin-heading"><div><h1>Mis proyectos</h1><p>Selecciona un proyecto para consultar su wiki.</p></div></div>
+    {user.globalRole === 'SUPERADMIN' && <CreateProjectForm onCreated={refreshSession} />}
+    <DefaultProjectPreference projects={projects} user={user} refreshSession={refreshSession} />
+    <div className="section-grid">{projects.map(project => <Link className="section-card" key={project.id} to={`/projects/${project.id}`}><h3>{project.name}</h3><p>{project.description}</p><small>{project.role || 'SUPERADMIN'}{project.isReadOnly ? ' · SOLO LECTURA' : ''}</small></Link>)}</div>
+    {user.globalRole !== 'SUPERADMIN' && <ProjectSubscriptions projects={projects} accessRequests={accessRequests} refreshSession={refreshSession} />}
+    <MyAccessRequests requests={accessRequests} refreshSession={refreshSession} />
+    {projects.length === 0 && accessRequests.length === 0 && <div className="panel">Todavía no hay proyectos disponibles.</div>}
+  </main>
 }

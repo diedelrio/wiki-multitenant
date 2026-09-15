@@ -25,6 +25,9 @@ enum DocumentStatus {
 }
 
 model User {
+  defaultProjectId String?
+  defaultProject Project? @relation("DefaultProject", fields: [defaultProjectId], references: [id], onDelete: SetNull)
+  accessRequests ProjectAccessRequest[]
   id               String              @id @default(uuid())
   email            String              @unique
   passwordHash     String
@@ -40,6 +43,8 @@ model User {
 }
 
 model Project {
+  defaultForUsers User[] @relation("DefaultProject")
+  accessRequests ProjectAccessRequest[]
   id          String              @id @default(uuid())
   slug        String              @unique
   name        String
@@ -75,6 +80,25 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ProjectAccessRequest {
+  id String @id @default(uuid())
+  userId String
+  projectId String
+  status AccessRequestStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  reviewedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, userId])
+  @@index([userId])
 }
 
 model Document {

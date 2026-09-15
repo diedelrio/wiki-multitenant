@@ -46,7 +46,8 @@ const authenticate = route(async (req, _res, next) => {
 const projectAccess = route(async (req, _res, next) => {
   const project = await prisma.project.findUnique({ where: { id: String(req.params.projectId) } })
   if (!project) throw new HttpError(404, 'Proyecto no encontrado')
-  if (project.archivedAt || project.blockedAt) throw new HttpError(423, project.archivedAt ? 'Proyecto eliminado' : 'Proyecto bloqueado')
+  const superadminMembers = req.auth!.globalRole === 'SUPERADMIN' && /^\/(?:members|access-requests)(?:\/|$)/.test(req.path)
+  if ((project.archivedAt || project.blockedAt) && !superadminMembers) throw new HttpError(423, project.archivedAt ? 'Proyecto eliminado' : 'Proyecto bloqueado')
   const membership = await prisma.projectMembership.findUnique({
     where: { projectId_userId: { projectId: project.id, userId: req.auth!.userId } },
   })
@@ -64,6 +65,18 @@ const requirePermission = (permission: Permission) => (req: Request, _res: Respo
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
+app.get('/api/membership-projects', authenticate, route(async (req, res) => {
+  const projects = await prisma.project.findMany({
+    where: req.auth!.globalRole === 'SUPERADMIN' ? {} : {
+      archivedAt: null, blockedAt: null,
+      memberships: { some: { userId: req.auth!.userId, role: 'ADMIN' } },
+    },
+    select: { id: true, name: true, slug: true, archivedAt: true, blockedAt: true },
+    orderBy: { name: 'asc' },
+  })
+  res.json(projects)
+}))
+
 async function startSession(userId: string, res: Response) {
   const id = crypto.randomBytes(32).toString('base64url')
   const expiresAt = new Date(Date.now() + env.SESSION_TTL_HOURS * 3_600_000)
@@ -79,14 +92,64 @@ app.post('/api/auth/login', route(async (req, res) => {
   res.status(204).end()
 }))
 
+app.get('/api/auth/projects', authenticate, route(async (_req, res) => {
+  res.json(await prisma.project.findMany({ where: { archivedAt: null, blockedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }))
+}))
+
+app.post('/api/access-requests', authenticate, route(async (req, res) => {
+  const { projectIds } = z.object({ projectIds: z.array(z.string().uuid()).min(1).max(100) }).parse(req.body)
+  const ids = [...new Set(projectIds)]
+  await prisma.$transaction(async tx => {
+    const projects = await tx.project.findMany({ where: { id: { in: ids }, archivedAt: null, blockedAt: null }, select: { id: true } })
+    if (projects.length !== ids.length) throw new HttpError(404, 'Alguno de los proyectos no esta disponible')
+    const memberships = await tx.projectMembership.findMany({ where: { userId: req.auth!.userId, projectId: { in: ids } }, select: { projectId: true } })
+    const existing = new Set(memberships.map(member => member.projectId))
+    await tx.projectAccessRequest.createMany({ data: ids.filter(id => !existing.has(id)).map(projectId => ({ projectId, userId: req.auth!.userId })), skipDuplicates: true })
+  })
+  res.status(204).end()
+}))
+
+app.delete('/api/access-requests/:requestId', authenticate, route(async (req, res) => {
+  const result = await prisma.projectAccessRequest.deleteMany({ where: {
+    id: String(req.params.requestId), userId: req.auth!.userId, status: { in: ['PENDING', 'REJECTED'] },
+  } })
+  if (!result.count) throw new HttpError(409, 'La solicitud ya no se puede cancelar. Actualiza su estado.')
+  res.status(204).end()
+}))
+
+app.post('/api/access-requests/:requestId/retry', authenticate, route(async (req, res) => {
+  const result = await prisma.projectAccessRequest.updateMany({ where: {
+    id: String(req.params.requestId), userId: req.auth!.userId, status: 'REJECTED',
+    project: { archivedAt: null, blockedAt: null, memberships: { none: { userId: req.auth!.userId } } },
+  }, data: { status: 'PENDING', reviewedAt: null, createdAt: new Date() } })
+  if (!result.count) throw new HttpError(409, 'No se puede reenviar esta solicitud. Actualiza su estado y comprueba que el proyecto siga disponible.')
+  res.status(204).end()
+}))
+
+app.get('/api/access-requests/pending', authenticate, route(async (req, res) => {
+  res.json(await prisma.projectAccessRequest.findMany({
+    where: {
+      status: 'PENDING', user: { globalRole: 'USER' },
+      ...(req.auth!.globalRole === 'SUPERADMIN' ? {} : { project: {
+        archivedAt: null, blockedAt: null,
+        memberships: { some: { userId: req.auth!.userId, role: 'ADMIN' } },
+      } }),
+    },
+    select: { id: true, createdAt: true, project: { select: { id: true, name: true } }, user: { select: { displayName: true, email: true } } },
+    orderBy: { createdAt: 'asc' },
+  }))
+}))
+
 app.post('/api/auth/register', route(async (req, res) => {
-  const input = z.object({ email: z.string().email(), password: z.string().min(10).max(128), displayName: z.string().trim().min(2).max(80) }).parse(req.body)
+  const input = z.object({
+    email: z.string().trim().email('Introduce un email válido.'),
+    password: z.string().min(10, 'La contraseña debe tener al menos 10 caracteres.').max(128, 'La contraseña no puede superar los 128 caracteres.'),
+    displayName: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres.').max(80, 'El nombre no puede superar los 80 caracteres.'),
+  }).parse(req.body)
   const email = input.email.toLowerCase()
   if (await prisma.user.findUnique({ where: { email } })) throw new HttpError(409, 'Ya existe un usuario con ese email')
   const passwordHash = await bcrypt.hash(input.password, 12)
-  const baseSlug = email.split('@')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'proyecto'
-  const slug = `${baseSlug}-${crypto.randomBytes(3).toString('hex')}`
-  const user = await prisma.user.create({ data: { email, displayName: input.displayName, passwordHash, memberships: { create: { role: 'ADMIN', project: { create: { slug, name: `Wiki de ${input.displayName}` } } } } } })
+  const user = await prisma.user.create({ data: { email, displayName: input.displayName, passwordHash } })
   await startSession(user.id, res)
   res.status(201).json({ id: user.id })
 }))
@@ -96,17 +159,31 @@ app.post('/api/auth/logout', authenticate, route(async (req, res) => {
   res.clearCookie(SESSION_COOKIE, { path: '/' }).status(204).end()
 }))
 
+app.patch('/api/auth/preferences', authenticate, route(async (req, res) => {
+  const { defaultProjectId } = z.object({ defaultProjectId: z.string().uuid().nullable() }).parse(req.body)
+  if (defaultProjectId) {
+    const project = await prisma.project.findFirst({ where: {
+      id: defaultProjectId, archivedAt: null, blockedAt: null,
+      ...(req.auth!.globalRole === 'SUPERADMIN' ? {} : { memberships: { some: { userId: req.auth!.userId } } }),
+    } })
+    if (!project) throw new HttpError(404, 'Proyecto no disponible o sin acceso')
+  }
+  await prisma.user.update({ where: { id: req.auth!.userId }, data: { defaultProjectId } })
+  res.status(204).end()
+}))
+
 app.get('/api/auth/session', authenticate, route(async (req, res) => {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: req.auth!.userId },
-    select: { id: true, email: true, displayName: true, globalRole: true },
+    select: { id: true, email: true, displayName: true, globalRole: true, defaultProjectId: true },
   })
   const projects = await prisma.project.findMany({
     where: req.auth!.globalRole === 'SUPERADMIN' ? { archivedAt: null, blockedAt: null } : { archivedAt: null, blockedAt: null, memberships: { some: { userId: user.id } } },
     select: { id: true, slug: true, name: true, description: true, isReadOnly: true, memberships: { where: { userId: user.id }, select: { role: true } } },
     orderBy: { name: 'asc' },
   })
-  res.json({ user, projects: projects.map(({ memberships, ...project }) => ({ ...project, role: memberships[0]?.role ?? null })) })
+  const accessRequests = await prisma.projectAccessRequest.findMany({ where: { userId: user.id }, select: { id: true, status: true, project: { select: { id: true, name: true } } } })
+  res.json({ user, accessRequests, projects: projects.map(({ memberships, ...project }) => ({ ...project, role: memberships[0]?.role ?? null })) })
 }))
 
 app.get('/api/projects', authenticate, route(async (req, res) => {
@@ -177,6 +254,17 @@ app.patch('/api/admin/projects/:projectId', authenticate, requireSuperadmin, rou
   res.json(await prisma.project.update({ where: { id: projectId }, data: { ...(input.isReadOnly !== undefined ? { isReadOnly: input.isReadOnly } : {}), ...(input.blocked !== undefined ? { blockedAt: input.blocked ? new Date() : null } : {}), ...(input.archived !== undefined ? { archivedAt: input.archived ? new Date() : null } : {}) } }))
 }))
 
+app.delete('/api/admin/projects/:projectId', authenticate, requireSuperadmin, route(async (req, res) => {
+  const projectId = String(req.params.projectId)
+  const { slug } = z.object({ slug: z.string().min(1) }).parse(req.body)
+  const project = await prisma.project.findUnique({ where: { id: projectId } })
+  if (!project) throw new HttpError(404, 'Proyecto no encontrado')
+  if (slug !== project.slug) throw new HttpError(400, 'El identificador no coincide con el proyecto')
+  const result = await prisma.project.deleteMany({ where: { id: projectId, slug } })
+  if (!result.count) throw new HttpError(404, 'Proyecto no encontrado')
+  res.status(204).end()
+}))
+
 app.use('/api/projects/:projectId', authenticate, projectAccess)
 
 app.get('/api/projects/:projectId/documents', requirePermission('document:read'), route(async (req, res) => {
@@ -215,14 +303,31 @@ app.delete('/api/projects/:projectId/documents/:documentId', requirePermission('
   res.status(204).end()
 }))
 
+app.get('/api/projects/:projectId/access-requests', requirePermission('member:manage'), route(async (req, res) => {
+  res.json(await prisma.projectAccessRequest.findMany({ where: { projectId: req.auth!.projectId!, status: 'PENDING', user: { globalRole: 'USER' } }, select: { id: true, createdAt: true, user: { select: { email: true, displayName: true } } }, orderBy: { createdAt: 'asc' } }))
+}))
+
+app.patch('/api/projects/:projectId/access-requests/:requestId', requirePermission('member:manage'), route(async (req, res) => {
+  const { status } = z.object({ status: z.enum(['APPROVED', 'REJECTED']) }).parse(req.body)
+  const projectId = req.auth!.projectId!
+  await prisma.$transaction(async tx => {
+    const request = await tx.projectAccessRequest.findFirst({ where: { id: String(req.params.requestId), projectId, user: { globalRole: 'USER' } } })
+    if (!request) throw new HttpError(404, 'Solicitud no encontrada')
+    const result = await tx.projectAccessRequest.updateMany({ where: { id: request.id, status: 'PENDING' }, data: { status, reviewedAt: new Date() } })
+    if (!result.count) throw new HttpError(409, 'La solicitud ya fue revisada')
+    if (status === 'APPROVED') await tx.projectMembership.upsert({ where: { projectId_userId: { projectId, userId: request.userId } }, create: { projectId, userId: request.userId, role: 'VIEWER' }, update: {} })
+  })
+  res.status(204).end()
+}))
+
 app.get('/api/projects/:projectId/members', requirePermission('member:read'), route(async (req, res) => {
-  res.json(await prisma.projectMembership.findMany({ where: { projectId: req.auth!.projectId! }, select: { role: true, createdAt: true, user: { select: { id: true, email: true, displayName: true } } } }))
+  res.json(await prisma.projectMembership.findMany({ where: { projectId: req.auth!.projectId!, ...(req.auth!.globalRole !== 'SUPERADMIN' ? { user: { globalRole: 'USER' as const } } : {}) }, select: { role: true, createdAt: true, user: { select: { id: true, email: true, displayName: true } } } }))
 }))
 
 app.post('/api/projects/:projectId/members', requirePermission('member:manage'), route(async (req, res) => {
   const input = z.object({ email: z.string().email(), role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) }).parse(req.body)
   const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } })
-  if (!user) throw new HttpError(404, 'Usuario no encontrado')
+  if (!user || (user.globalRole === 'SUPERADMIN' && req.auth!.globalRole !== 'SUPERADMIN')) throw new HttpError(404, 'Usuario no encontrado')
   const current = await prisma.projectMembership.findUnique({ where: { projectId_userId: { projectId: req.auth!.projectId!, userId: user.id } } })
   if (current?.role === 'ADMIN' && input.role !== 'ADMIN') {
     const admins = await prisma.projectMembership.count({ where: { projectId: req.auth!.projectId!, role: 'ADMIN' } })
@@ -241,15 +346,23 @@ async function protectLastAdmin(projectId: string, userId: string, nextRole?: Pr
   return membership
 }
 
+async function protectSuperadminMember(auth: Auth, userId: string) {
+  if (auth.globalRole === 'SUPERADMIN') return
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { globalRole: true } })
+  if (!target || target.globalRole === 'SUPERADMIN') throw new HttpError(404, 'Miembro no encontrado')
+}
+
 app.patch('/api/projects/:projectId/members/:userId', requirePermission('member:manage'), route(async (req, res) => {
   const input = z.object({ role: z.enum(['ADMIN', 'EDITOR', 'VIEWER']) }).parse(req.body)
   const projectId = req.auth!.projectId!; const userId = String(req.params.userId)
+  await protectSuperadminMember(req.auth!, userId)
   await protectLastAdmin(projectId, userId, input.role)
   res.json(await prisma.projectMembership.update({ where: { projectId_userId: { projectId, userId } }, data: { role: input.role } }))
 }))
 
 app.delete('/api/projects/:projectId/members/:userId', requirePermission('member:manage'), route(async (req, res) => {
   const projectId = req.auth!.projectId!; const userId = String(req.params.userId)
+  await protectSuperadminMember(req.auth!, userId)
   await protectLastAdmin(projectId, userId)
   await prisma.projectMembership.delete({ where: { projectId_userId: { projectId, userId } } })
   res.status(204).end()

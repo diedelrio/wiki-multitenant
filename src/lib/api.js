@@ -4,7 +4,8 @@ export async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     if (response.status === 401) window.dispatchEvent(new Event('session-expired'))
-    const error = new Error(data.error || 'Error de comunicación con la API'); error.status = response.status; throw error
+    const details = Array.isArray(data.details) ? data.details.map(issue => issue.message).filter(message => typeof message === 'string') : []
+    const error = new Error(details.length ? details.join(' ') : data.error || 'Error de comunicación con la API'); error.status = response.status; throw error
   }
   return data
 }
@@ -18,6 +19,7 @@ export const createDocument = (projectId, data) => api(`/projects/${projectId}/d
 export const updateDocument = (projectId, id, data) => api(`/projects/${projectId}/documents/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
 export const deleteDocument = (projectId, id) => api(`/projects/${projectId}/documents/${id}`, { method: 'DELETE' })
 export const getMembers = projectId => api(`/projects/${projectId}/members`)
+export const getMembershipProjects = () => api('/membership-projects')
 export const saveMember = (projectId, data) => api(`/projects/${projectId}/members`, { method: 'POST', body: JSON.stringify(data) })
 export const updateMember = (projectId, userId, role) => api(`/projects/${projectId}/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
 export const deleteMember = (projectId, userId) => api(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' })
@@ -27,3 +29,5 @@ export const updateAdminUser = (id, data) => api(`/admin/users/${id}`, { method:
 export const resetUserPassword = id => api(`/admin/users/${id}/reset-password`, { method: 'POST' })
 export const getAdminProjects = () => api('/admin/projects')
 export const updateAdminProject = (id, data) => api(`/admin/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+
+export const deleteAdminProject = (id, slug) => api(`/admin/projects/${id}`, { method: 'DELETE', body: JSON.stringify({ slug }) })
