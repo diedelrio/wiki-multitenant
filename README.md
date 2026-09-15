@@ -54,4 +54,4 @@ Las pruebas de integración requieren API y base de datos activas y utilizan dat
 
 ## Publicación
 
-El frontend compilado está en `dist/` y la API en `server/dist/`. Configura un servidor web con HTTPS, rutas de React y proxy `/api`. `npm run preview` no sustituye esa configuración. Consulta la [guía de instalación](docs/instalacion.md).
+El frontend compilado está en `dist/` y la API en `server/dist/`. Con `NODE_ENV=production`, la API sirve ambos desde el mismo puerto. Para Render: build `npm ci --include=dev && npm run build:render` y arranque `npm run start:render`. Configura PostgreSQL, el origen público y HTTPS según la [guía de instalación](docs/instalacion.md). `npm run test:production` verifica el servidor después de compilar ambas partes.

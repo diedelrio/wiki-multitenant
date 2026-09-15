@@ -5,6 +5,7 @@ import cors from 'cors'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { PrismaClient, type GlobalRole, type ProjectRole } from '@prisma/client'
 import { z } from 'zod'
+import { serveFrontend } from './frontend.js'
 
 const env = z.object({
   DATABASE_URL: z.string().min(1),
@@ -367,6 +368,9 @@ app.delete('/api/projects/:projectId/members/:userId', requirePermission('member
   await prisma.projectMembership.delete({ where: { projectId_userId: { projectId, userId } } })
   res.status(204).end()
 }))
+
+app.use('/api', (_req, res) => res.status(404).json({ error: 'Ruta de API no encontrada' }))
+if (env.NODE_ENV === 'production') serveFrontend(app)
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (error instanceof z.ZodError) return res.status(400).json({ error: 'Solicitud inválida', details: error.issues })

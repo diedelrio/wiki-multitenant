@@ -88,21 +88,38 @@ npm run build
 npm run build:api
 ```
 
-El frontend se genera en `dist/`; la API, en `server/dist/`. Para ejecutar la API compilada desde la raíz:
+El frontend se genera en `dist/`; la API, en `server/dist/`. Con `NODE_ENV=production`, la API sirve también el frontend y las rutas de React desde el mismo puerto. Para ejecutarla desde la raíz:
 
 ```powershell
+$env:NODE_ENV = 'production'
 node --env-file=.env server/dist/index.js
 ```
 
-La publicación requiere configurar un servidor web o proxy:
+La publicación requiere HTTPS. Puedes usar la terminación TLS del proveedor o un proxy delante del servicio:
 
-- Servir `dist/` y devolver `index.html` para las rutas de navegación de React.
-- Dirigir `/api` a la API **conservando ese prefijo**.
+- Dirigir todo el tráfico al puerto de la API. En producción, esta sirve `dist/` y devuelve `index.html` para las rutas de navegación de React.
+- Las rutas `/api` conservan sus respuestas JSON; no se convierten en páginas del frontend.
 - Usar HTTPS y configurar `WEB_ORIGIN` con la dirección pública real.
 - Ejecutar la API mediante un servicio o gestor de procesos y definir `NODE_ENV=production`.
 - Mantener PostgreSQL accesible únicamente para los componentes que lo necesitan.
 
 `npm run preview` permite revisar los archivos compilados, pero su configuración actual no incluye el proxy `/api`; no es un despliegue completo. El proxy de desarrollo en `vite.config.js` apunta a `localhost:3000`: si cambias `PORT`, ajusta ese destino.
+
+### Preparación para Render y PostgreSQL externo
+
+Crea un servicio web Node conectado al repositorio, con la raíz del repositorio como directorio de trabajo:
+
+- **Build Command:** `npm ci --include=dev && npm run build:render`
+- **Start Command:** `npm run start:render`
+- **Health Check Path:** `/api/health`
+- **NODE_ENV:** `production`.
+- **DATABASE_URL:** conexión de tu PostgreSQL externo, con SSL según la configuración del proveedor.
+- **WEB_ORIGIN:** URL HTTPS pública del servicio, sin barra final.
+- **SESSION_TTL_HOURS:** duración deseada para las sesiones.
+
+El servicio utiliza el `PORT` que recibe del entorno. El build genera Prisma y compila ambas partes; el arranque aplica las migraciones existentes antes de iniciar el servidor. No ejecuta el seed ni crea cuentas automáticamente. Prepara SUPERADMIN de manera controlada antes de habilitar el uso de la instalación; revisa la sección del seed si necesitas datos de demostración.
+
+El frontend y la API comparten origen, por lo que no necesitas una URL de API adicional en React. Esta configuración prepara el código; no crea servicios, cuentas ni bases de datos en el proveedor.
 
 ## Actualizaciones
 

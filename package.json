@@ -11,12 +11,16 @@
     "dev:all": "concurrently \"npm run dev:api\" \"npm run dev\"",
     "build": "vite build",
     "build:api": "tsc -p server/tsconfig.json",
+    "build:render": "prisma generate && npm run build && npm run build:api",
+    "start": "node server/dist/index.js",
+    "start:render": "prisma migrate deploy && npm start",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "content:import": "tsx prisma/seed.ts",
     "test:smoke": "node scripts/smoke-test.mjs",
+    "test:production": "node scripts/test-production-server.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
