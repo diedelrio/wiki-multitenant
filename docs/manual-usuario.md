@@ -42,7 +42,8 @@ Puedes cambiar la selección cuando quieras. Elige **Mostrar Mis proyectos** par
 
 ## 4. Navegar y consultar documentos
 
-- En escritorio con mouse, la barra lateral aparece reducida a iconos. Pasa el puntero por encima para expandirla; se contrae al retirarlo. También permite navegación con teclado.
+- En escritorio con mouse, la barra lateral aparece reducida a iconos. Pasa el puntero por encima para expandirla; se contrae al retirarlo. El contenido central ajusta su ancho para seguir visible. También permite navegación con teclado.
+- Pulsa el pin junto a Central WiKi para fijar la barra expandida. Vuelve a pulsarlo para recuperar el modo automático. La preferencia se conserva en ese navegador; el menú móvil mantiene su funcionamiento habitual.
 - En móvil, abre la barra con el botón de menú y ciérrala con la X o pulsando fuera.
 - Dentro del proyecto, los documentos se agrupan por sección. Pulsa un título para leerlo.
 - Usa el buscador lateral para encontrar documentos del proyecto actual. Los resultados respetan tus permisos.

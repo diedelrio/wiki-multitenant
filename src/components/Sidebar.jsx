@@ -1,10 +1,19 @@
-import { BookOpen, ChevronRight, FileText, Home, Search, Settings, Users, X, CircleHelp } from 'lucide-react'
+import { BookOpen, ChevronRight, FileText, Home, Search, Settings, Users, X, CircleHelp, Pin, PinOff } from 'lucide-react'
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { groupBySection } from '../lib/content'
 
 export default function Sidebar({ docs = [], open, setOpen, query, setQuery, projectId, canEdit, navigation }) {
   const grouped = groupBySection(docs)
   const navigate = useNavigate()
+  const [pinned, setPinned] = useState(() => {
+    try { return localStorage.getItem('wiki-sidebar-pinned') === 'true' } catch { return false }
+  })
+  function togglePinned() {
+    const next = !pinned
+    setPinned(next)
+    try { localStorage.setItem('wiki-sidebar-pinned', String(next)) } catch {}
+  }
 
   function submit(event) {
     event.preventDefault()
@@ -16,10 +25,11 @@ export default function Sidebar({ docs = [], open, setOpen, query, setQuery, pro
   return (
     <>
       <div className={`sidebar-overlay ${open ? 'visible' : ''}`} onClick={() => setOpen(false)} />
-      <aside className={`sidebar ${open ? 'open' : ''}`}>
+      <aside className={`sidebar ${open ? 'open' : ''} ${pinned ? 'pinned' : ''}`}>
         <div className="brand-row">
           <div className="brand-mark"><BookOpen size={18} /></div>
           <div className="brand-copy"><strong>Central WiKi</strong><span>Knowledge base</span></div>
+          <button className="icon-button sidebar-pin" type="button" onClick={togglePinned} aria-pressed={pinned} aria-label={pinned ? 'Volver al modo automático' : 'Fijar barra lateral expandida'} title={pinned ? 'Volver al modo automático' : 'Fijar barra lateral expandida'}>{pinned ? <PinOff size={17} /> : <Pin size={17} />}</button>
           <button className="icon-button mobile-only" onClick={() => setOpen(false)} aria-label="Cerrar menú"><X size={20} /></button>
         </div>
 

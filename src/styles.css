@@ -125,7 +125,7 @@ button { color: inherit; }
 .boot-screen { min-height: 100vh; display: grid; place-items: center; color: var(--muted); background: var(--bg); }
 .app-shell { min-height: 100vh; display: flex; }
 .sidebar { width: 292px; height: 100vh; position: fixed; inset: 0 auto 0 0; z-index: 30; border-right: 1px solid var(--line); background: var(--sidebar); display: flex; flex-direction: column; }
-.main-shell { margin-left: 292px; width: calc(100% - 292px); min-width: 0; }
+.main-shell { margin-left: 292px; width: calc(100% - 292px); min-width: 0; container-type: inline-size; }
 .topbar { height: 64px; position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: space-between; padding: 0 28px; }
 .topbar-title { font-weight: 700; font-size: 14px; letter-spacing: .01em; }
 .topbar-actions { display: flex; gap: 8px; }
@@ -225,12 +225,15 @@ button { color: inherit; }
 .search-result span, .search-result small { color: var(--muted); }
 
 .sidebar-overlay { display: none; }
+.sidebar-pin { display: none; flex-shrink: 0; }
 .mobile-only { display: none; }
 
 @media (min-width: 821px) and (hover: hover) and (pointer: fine) {
   .sidebar { width: 72px; overflow: hidden; transition: width .2s ease; }
-  .sidebar:hover, .sidebar:has(:focus-visible) { width: 292px; box-shadow: var(--shadow); }
-  .main-shell { margin-left: 72px; width: calc(100% - 72px); }
+  .sidebar:hover, .sidebar:has(:focus-visible), .sidebar.pinned { width: 292px; box-shadow: var(--shadow); }
+  .sidebar-pin { display: inline-grid; }
+  .main-shell { margin-left: 72px; width: calc(100% - 72px); transition: margin-left .2s ease, width .2s ease; }
+  .sidebar:is(:hover, :has(:focus-visible), .pinned) ~ .main-shell { margin-left: 292px; width: calc(100% - 292px); }
   .sidebar .brand-row { flex-shrink: 0; padding-inline: 17px; }
   .sidebar .brand-mark, .sidebar svg { flex-shrink: 0; }
   .sidebar .brand-copy { flex-shrink: 0; white-space: nowrap; }
@@ -239,15 +242,27 @@ button { color: inherit; }
   .sidebar .nav-scroll { overflow-x: hidden; }
   .sidebar .nav-item { min-width: 0; }
   .sidebar .section-title { white-space: nowrap; overflow: hidden; }
-  .sidebar:not(:hover):not(:has(:focus-visible)) .brand-copy,
-  .sidebar:not(:hover):not(:has(:focus-visible)) .search-box input,
-  .sidebar:not(:hover):not(:has(:focus-visible)) .section-title,
-  .sidebar:not(:hover):not(:has(:focus-visible)) .nav-item span { opacity: 0; }
-  .sidebar:not(:hover):not(:has(:focus-visible)) .nav-chevron { display: none; }
+  .sidebar:not(:hover):not(:has(:focus-visible)):not(.pinned) .brand-copy,
+  .sidebar:not(:hover):not(:has(:focus-visible)):not(.pinned) .sidebar-pin,
+  .sidebar:not(:hover):not(:has(:focus-visible)):not(.pinned) .search-box input,
+  .sidebar:not(:hover):not(:has(:focus-visible)):not(.pinned) .section-title,
+  .sidebar:not(:hover):not(:has(:focus-visible)):not(.pinned) .nav-item span { opacity: 0; }
+  .sidebar:not(:hover):not(:has(:focus-visible)):not(.pinned) .nav-chevron { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar { transition: none !important; }
+  .sidebar, .main-shell { transition: none !important; }
+}
+
+@container (max-width: 900px) {
+  .doc-layout, .admin-grid { grid-template-columns: minmax(0, 1fr); }
+  .toc { display: none; }
+  .section-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .create-project-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-user-row, .admin-heading { flex-wrap: wrap; }
+}
+@container (max-width: 560px) {
+  .section-grid, .stat-grid, .create-project-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 1080px) {
